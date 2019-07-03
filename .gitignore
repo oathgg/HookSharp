@@ -3,3 +3,6 @@
 ################################################################################
 
 /.vs/HookSharp/v16
+/packages
+/HookSharp/bin/Debug
+/HookSharp/obj/Debug
