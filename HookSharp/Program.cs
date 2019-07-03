@@ -34,7 +34,7 @@ namespace HookSharp
             int sizeOfCodeOffset = e_lfanew + optionalHeaderOffset + 0x4;
             int BaseOfCodeOffset = e_lfanew + optionalHeaderOffset + 0x14;
 
-            // DWORD https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dtyp/262627d8-3418-4627-9218-4ffe110850b2
+            // https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dtyp/262627d8-3418-4627-9218-4ffe110850b2
             uint BaseOfCode = BitConverter.ToUInt32(bytesFromMyMemory, BaseOfCodeOffset);
             uint sizeOfCode = BitConverter.ToUInt32(bytesFromMyMemory, sizeOfCodeOffset);
 
