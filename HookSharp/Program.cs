@@ -25,23 +25,27 @@ namespace HookSharp
             byte[] bytesFromMyMemory = ProcessHelper.GetByteFromProcessModule(Process.GetCurrentProcess(), dllName);
             byte[] bytesFromRemoteMemory = ProcessHelper.GetByteFromProcessModule(Process.GetProcessesByName(remoteProcessName).FirstOrDefault(), dllName);
 
-            byte e_lfanew = bytesFromMyMemory[0x3C];
-            byte optionalHeaderOffset = 0x18;
+            // File address of new exe header
+            int e_lfanew = bytesFromMyMemory[0x3C];
+
+            // https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-_image_optional_header
+            int optionalHeaderOffset = 0x18;
 
             int sizeOfCodeOffset = e_lfanew + optionalHeaderOffset + 0x4;
             int BaseOfCodeOffset = e_lfanew + optionalHeaderOffset + 0x14;
 
+            // DWORD https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dtyp/262627d8-3418-4627-9218-4ffe110850b2
             uint BaseOfCode = BitConverter.ToUInt32(bytesFromMyMemory, BaseOfCodeOffset);
             uint sizeOfCode = BitConverter.ToUInt32(bytesFromMyMemory, sizeOfCodeOffset);
 
             for (uint i = BaseOfCode; i < sizeOfCode; i++)
             {
-                byte a = bytesFromMyMemory[i];
-                byte b = bytesFromRemoteMemory[i];
+                byte original = bytesFromMyMemory[i];
+                byte possiblyTampered = bytesFromRemoteMemory[i];
 
-                if (a != b)
+                if (original != possiblyTampered)
                 {
-                    Console.WriteLine($"{dllName}\t0x{i.ToString("X")}\t\t0x{a.ToString("X")}\t\t0x{b.ToString("X")}");
+                    Console.WriteLine($"{dllName}\t0x{i.ToString("X")}\t\t0x{original.ToString("X")}\t\t0x{possiblyTampered.ToString("X")}");
                 }
             }
         }
@@ -67,7 +71,7 @@ namespace HookSharp
 
             byte[] buffer = new byte[module.ModuleMemorySize];
 
-            IntPtr processHandle = OpenProcess(0x0010, false, process.Id);
+            IntPtr processHandle = OpenProcess(0x10 /* VirtualMemoryRead */, false, process.Id);
 
             ReadProcessMemory((int)processHandle, module.BaseAddress, buffer, buffer.Length, ref bytesRead);
 
