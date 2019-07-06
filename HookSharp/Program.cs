@@ -11,9 +11,11 @@ namespace HookSharp
         {
             Console.WriteLine($"DllName\t\tOffset\t\tOriginal\tNew");
 
-            ScanDll("Notepad++", "ntdll.dll");
-            ScanDll("Notepad++", "kernel32.dll");
-            ScanDll("Notepad++", "user32.dll");
+            string processName = "League Of Legends";
+
+            ScanDll(processName, "ntdll.dll");
+            ScanDll(processName, "kernel32.dll");
+            ScanDll(processName, "user32.dll");
 
             Console.WriteLine($"");
             Console.Write($"Scan completed...");
@@ -22,8 +24,8 @@ namespace HookSharp
 
         static void ScanDll (string remoteProcessName, string dllName)
         {
-            byte[] bytesFromMyMemory = ProcessHelper.GetByteFromProcessModule(Process.GetCurrentProcess(), dllName);
-            byte[] bytesFromRemoteMemory = ProcessHelper.GetByteFromProcessModule(Process.GetProcessesByName(remoteProcessName).FirstOrDefault(), dllName);
+            byte[] bytesFromMyMemory = Process.GetCurrentProcess().GetByteFromProcessModule(dllName);
+            byte[] bytesFromRemoteMemory = Process.GetProcessesByName(remoteProcessName).FirstOrDefault().GetByteFromProcessModule(dllName);
 
             // File address of new exe header
             int e_lfanew = bytesFromMyMemory[0x3C];
@@ -63,7 +65,7 @@ namespace HookSharp
         [return: MarshalAs(UnmanagedType.Bool)]
         static extern bool CloseHandle(IntPtr hObject);
 
-        public static byte[] GetByteFromProcessModule (Process process, string moduleName)
+        public static byte[] GetByteFromProcessModule (this Process process, string moduleName)
         {
             ProcessModule module = process.Modules.Cast<ProcessModule>().Where(x => x.ModuleName.ToUpper() == moduleName.ToUpper()).FirstOrDefault();
 
