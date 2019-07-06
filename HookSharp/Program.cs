@@ -27,12 +27,11 @@ namespace HookSharp
             byte[] bytesFromMyMemory = Process.GetCurrentProcess().GetByteFromProcessModule(dllName);
             byte[] bytesFromRemoteMemory = Process.GetProcessesByName(remoteProcessName).FirstOrDefault().GetByteFromProcessModule(dllName);
 
-            // File address of new exe header
+            // http://www.pinvoke.net/default.aspx/Structures.IMAGE_DOS_HEADER
             int e_lfanew = bytesFromMyMemory[0x3C];
 
             // https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-_image_optional_header
             int optionalHeaderOffset = 0x18;
-
             int sizeOfCodeOffset = e_lfanew + optionalHeaderOffset + 0x4;
             int BaseOfCodeOffset = e_lfanew + optionalHeaderOffset + 0x14;
 
