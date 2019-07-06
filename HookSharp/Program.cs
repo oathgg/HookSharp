@@ -11,7 +11,7 @@ namespace HookSharp
         {
             Console.WriteLine($"DllName\t\tOffset\t\tOriginal\tNew");
 
-            string processName = "League Of Legends";
+            string processName = "notepad++";
 
             ScanDll(processName, "ntdll.dll");
             ScanDll(processName, "kernel32.dll");
