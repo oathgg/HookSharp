@@ -1,5 +1,7 @@
 ﻿using System;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 
@@ -11,48 +13,95 @@ namespace HookSharp
         {
             Console.WriteLine($"DllName\t\tOffset\t\tOriginal\tNew");
 
-            string processName = "notepad++";
+            Process process = Process.GetProcessesByName("notepad++").FirstOrDefault();
 
-            ScanDll(processName, "ntdll.dll");
-            ScanDll(processName, "kernel32.dll");
-            ScanDll(processName, "user32.dll");
+            process.ScanHooks();
 
             Console.WriteLine($"");
             Console.Write($"Scan completed...");
             Console.ReadKey();
         }
-
-        static void ScanDll (string remoteProcessName, string dllName)
-        {
-            byte[] bytesFromMyMemory = Process.GetCurrentProcess().GetByteFromProcessModule(dllName);
-            byte[] bytesFromRemoteMemory = Process.GetProcessesByName(remoteProcessName).FirstOrDefault().GetByteFromProcessModule(dllName);
-
-            // http://www.pinvoke.net/default.aspx/Structures.IMAGE_DOS_HEADER
-            int e_lfanew = bytesFromMyMemory[0x3C];
-
-            // https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-_image_optional_header
-            int optionalHeaderOffset = 0x18;
-            int sizeOfCodeOffset = e_lfanew + optionalHeaderOffset + 0x4;
-            int BaseOfCodeOffset = e_lfanew + optionalHeaderOffset + 0x14;
-
-            // https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dtyp/262627d8-3418-4627-9218-4ffe110850b2
-            uint BaseOfCode = BitConverter.ToUInt32(bytesFromMyMemory, BaseOfCodeOffset);
-            uint sizeOfCode = BitConverter.ToUInt32(bytesFromMyMemory, sizeOfCodeOffset);
-
-            for (uint i = BaseOfCode; i < sizeOfCode; i++)
-            {
-                byte original = bytesFromMyMemory[i];
-                byte possiblyTampered = bytesFromRemoteMemory[i];
-
-                if (original != possiblyTampered)
-                {
-                    Console.WriteLine($"{dllName}\t0x{i.ToString("X")}\t\t0x{original.ToString("X")}\t\t0x{possiblyTampered.ToString("X")}");
-                }
-            }
-        }
     }
 
     public static class ProcessHelper
+    {
+        public static void ScanHooks(this Process process)
+        {
+            foreach (ProcessModule module in process.Modules.Cast<ProcessModule>().Where(x => x.ModuleName.Contains(".dll")))
+            {
+                byte[] bytesFromRemoteMemory = process.GetBytesFromDll(module);
+                byte[] bytesFromMyMemory = Process.GetCurrentProcess().GetBytesFromDll(module);
+
+                // http://www.pinvoke.net/default.aspx/Structures.IMAGE_DOS_HEADER
+                int e_lfanew = bytesFromMyMemory[0x3C];
+
+                // https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-_image_optional_header
+                int optionalHeaderOffset = 0x18;
+                int sizeOfCodeOffset = e_lfanew + optionalHeaderOffset + 0x4;
+                int BaseOfCodeOffset = e_lfanew + optionalHeaderOffset + 0x14;
+
+                // https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dtyp/262627d8-3418-4627-9218-4ffe110850b2
+                uint BaseOfCode = BitConverter.ToUInt32(bytesFromMyMemory, BaseOfCodeOffset);
+                uint sizeOfCode = BitConverter.ToUInt32(bytesFromMyMemory, sizeOfCodeOffset);
+
+                for (uint i = BaseOfCode; i < sizeOfCode; i++)
+                {
+                    byte original = bytesFromMyMemory[i];
+
+                    byte possiblyTampered = bytesFromRemoteMemory[i];
+
+                    if (original != possiblyTampered)
+                    {
+                        Console.WriteLine($"{module.ModuleName}\t0x{i.ToString("X")}\t\t0x{original.ToString("X")}\t\t0x{possiblyTampered.ToString("X")}");
+                    }
+                }
+            }
+        }
+
+        public static byte[] GetBytesFromDll(this Process process, ProcessModule module)
+        {
+            // If we can find it in our own process then we retrieve those bytes, otherwise retrieve bytes from disk
+            var procModule = process.GetProcessModule(module.ModuleName);
+
+            if (procModule == null)
+            {
+                Kernel32.LoadLibrary(module.FileName);
+
+                // Refresh the process modules list
+                process = Process.GetProcessById(process.Id);
+            }
+
+            byte[] result = process.GetByteFromProcessModule(module.ModuleName);
+
+            return result;
+        }
+
+        public static ProcessModule GetProcessModule(this Process process, string moduleName)
+        {
+            ProcessModule module = process.Modules.Cast<ProcessModule>().Where(x => x.ModuleName.ToUpper() == moduleName.ToUpper()).FirstOrDefault();
+
+            return module;
+        }
+
+        public static byte[] GetByteFromProcessModule(this Process process, string moduleName)
+        {
+            ProcessModule module = process.GetProcessModule(moduleName);
+
+            int bytesRead = 0;
+
+            byte[] buffer = new byte[module.ModuleMemorySize];
+
+            IntPtr processHandle = Kernel32.OpenProcess(0x10 /* VirtualMemoryRead */, false, process.Id);
+
+            Kernel32.ReadProcessMemory((int)processHandle, module.BaseAddress, buffer, buffer.Length, ref bytesRead);
+
+            Kernel32.CloseHandle(processHandle);
+
+            return buffer;
+        }
+    }
+
+    public static class Kernel32
     {
         [DllImport("kernel32.dll")]
         public static extern IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId);
@@ -62,23 +111,24 @@ namespace HookSharp
 
         [DllImport("kernel32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
-        static extern bool CloseHandle(IntPtr hObject);
+        public static extern bool CloseHandle(IntPtr hObject);
 
-        public static byte[] GetByteFromProcessModule (this Process process, string moduleName)
+        [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr LoadLibraryExW([MarshalAs(UnmanagedType.LPWStr)]string lpFileName, IntPtr hReservedNull, uint dwFlags);
+
+        public static IntPtr LoadLibrary(string dllPath)
         {
-            ProcessModule module = process.Modules.Cast<ProcessModule>().Where(x => x.ModuleName.ToUpper() == moduleName.ToUpper()).FirstOrDefault();
+            IntPtr moduleHandle = LoadLibraryExW(dllPath, IntPtr.Zero, 0x1 /*DontResolveDllReferences*/);
 
-            int bytesRead = 0;
+            if (moduleHandle == IntPtr.Zero)
+            {
+                var lasterror = Marshal.GetLastWin32Error();
 
-            byte[] buffer = new byte[module.ModuleMemorySize];
+                var innerEx = new Win32Exception(lasterror);
 
-            IntPtr processHandle = OpenProcess(0x10 /* VirtualMemoryRead */, false, process.Id);
-
-            ReadProcessMemory((int)processHandle, module.BaseAddress, buffer, buffer.Length, ref bytesRead);
-
-            CloseHandle(processHandle);
-
-            return buffer;
+                innerEx.Data.Add("LastWin32Error", lasterror);
+            }
+            return moduleHandle;
         }
     }
 }
