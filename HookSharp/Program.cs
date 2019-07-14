@@ -11,11 +11,17 @@ namespace HookSharp
     {
         static void Main(string[] args)
         {
-            Console.WriteLine($"DllName\t\tOffset\t\tOriginal\tNew");
-
             Process process = Process.GetProcessesByName("notepad++").FirstOrDefault();
 
-            process.ScanHooks();
+            if (process == null)
+            {
+                Console.WriteLine("Process cannot be found.");
+            }
+            else
+            {
+                Console.WriteLine($"DllName\t\tOffset\t\tOriginal\tNew");
+                process.ScanHooks();
+            }
 
             Console.WriteLine($"");
             Console.Write($"Scan completed...");
