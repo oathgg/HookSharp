@@ -52,13 +52,16 @@ namespace HookSharp
 
                 for (uint i = BaseOfCode; i < sizeOfCode; i++)
                 {
+                    if (i >= bytesFromMyMemory.Length || i >= bytesFromRemoteMemory.Length)
+                    {
+                        break;
+                    }
+
                     byte original = bytesFromMyMemory[i];
-
                     byte possiblyTampered = bytesFromRemoteMemory[i];
-
                     if (original != possiblyTampered)
                     {
-                        Console.WriteLine($"{module.ModuleName}\t0x{i.ToString("X")}\t\t0x{original.ToString("X")}\t\t0x{possiblyTampered.ToString("X")}");
+                        Console.WriteLine($"{module.ModuleName}\t0x{i:X}\t\t0x{original:X}\t\t0x{possiblyTampered:X}");
                     }
                 }
             }
@@ -71,7 +74,7 @@ namespace HookSharp
 
             if (procModule == null)
             {
-                Kernel32.LoadLibrary(module.FileName);
+                WinAPI.LoadLibrary(module.FileName);
 
                 // Refresh the process modules list
                 process = Process.GetProcessById(process.Id);
@@ -91,50 +94,33 @@ namespace HookSharp
 
         public static byte[] GetByteFromProcessModule(this Process process, string moduleName)
         {
+            // Get current process id
+            Process currentProcess = Process.GetCurrentProcess();
+
             ProcessModule module = process.GetProcessModule(moduleName);
 
             int bytesRead = 0;
 
             byte[] buffer = new byte[module.ModuleMemorySize];
 
-            IntPtr processHandle = Kernel32.OpenProcess(0x10 /* VirtualMemoryRead */, false, process.Id);
+            // Only run this code if the process is not the same as the current process
+            if (process.Id != currentProcess.Id)
+            {
+                WinAPI.SuspendProcess(process.Id);
+            }
 
-            Kernel32.ReadProcessMemory((int)processHandle, module.BaseAddress, buffer, buffer.Length, ref bytesRead);
+            IntPtr processHandle = WinAPI.OpenProcess(0x10 /* VirtualMemoryRead */, false, process.Id);
 
-            Kernel32.CloseHandle(processHandle);
+            WinAPI.ReadProcessMemory((int)processHandle, module.BaseAddress, buffer, buffer.Length, ref bytesRead);
+
+            WinAPI.CloseHandle(processHandle);
+
+            if (process.Id != currentProcess.Id)
+            { 
+                WinAPI.ResumeProcess(process.Id);
+            }
 
             return buffer;
-        }
-    }
-
-    public static class Kernel32
-    {
-        [DllImport("kernel32.dll")]
-        public static extern IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId);
-
-        [DllImport("kernel32.dll")]
-        public static extern bool ReadProcessMemory(int hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, int dwSize, ref int lpNumberOfBytesRead);
-
-        [DllImport("kernel32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool CloseHandle(IntPtr hObject);
-
-        [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
-        private static extern IntPtr LoadLibraryExW([MarshalAs(UnmanagedType.LPWStr)]string lpFileName, IntPtr hReservedNull, uint dwFlags);
-
-        public static IntPtr LoadLibrary(string dllPath)
-        {
-            IntPtr moduleHandle = LoadLibraryExW(dllPath, IntPtr.Zero, 0x1 /*DontResolveDllReferences*/);
-
-            if (moduleHandle == IntPtr.Zero)
-            {
-                var lasterror = Marshal.GetLastWin32Error();
-
-                var innerEx = new Win32Exception(lasterror);
-
-                innerEx.Data.Add("LastWin32Error", lasterror);
-            }
-            return moduleHandle;
         }
     }
 }
