@@ -11,7 +11,10 @@ namespace HookSharp
     {
         static void Main(string[] args)
         {
-            Process process = Process.GetProcessesByName("notepad++").FirstOrDefault();
+            Process process = Process.GetProcessesByName("overwatch").FirstOrDefault();
+
+            // Set the console to use UTF8 supported strings
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
 
             if (process == null)
             {
@@ -19,7 +22,7 @@ namespace HookSharp
             }
             else
             {
-                Console.WriteLine($"DllName\t\tOffset\t\tOriginal\tNew");
+                Console.WriteLine($"DllName\t\tOffset\t\tOriginal\tNew\tFunction");
                 process.ScanHooks();
             }
 
@@ -61,7 +64,13 @@ namespace HookSharp
                     byte possiblyTampered = bytesFromRemoteMemory[i];
                     if (original != possiblyTampered)
                     {
-                        Console.WriteLine($"{module.ModuleName}\t0x{i:X}\t\t0x{original:X}\t\t0x{possiblyTampered:X}");
+                        var tModule = Process.GetCurrentProcess().GetProcessModule(module.ModuleName);
+                        Console.WriteLine($"{module.ModuleName}" +
+                            $"\t0x{i:X}" +
+                            $"\t\t0x{original:X}" +
+                            $"\t\t0x{possiblyTampered:X}"
+                            + $"\t{GetFunctionNameFromAddress(tModule, (IntPtr)i)}"
+                            );
                     }
                 }
             }
@@ -88,7 +97,6 @@ namespace HookSharp
         public static ProcessModule GetProcessModule(this Process process, string moduleName)
         {
             ProcessModule module = process.Modules.Cast<ProcessModule>().Where(x => x.ModuleName.ToUpper() == moduleName.ToUpper()).FirstOrDefault();
-
             return module;
         }
 
@@ -121,6 +129,14 @@ namespace HookSharp
             }
 
             return buffer;
+        }
+
+        // Return the name of function which belongs to a memory address in a module
+        public static string GetFunctionNameFromAddress(this ProcessModule module, IntPtr offset)
+        {
+            IntPtr address = (IntPtr)(module.BaseAddress.ToInt64() + offset.ToInt64());
+            string result = Marshal.PtrToStringAuto(address);
+            return result;
         }
     }
 }

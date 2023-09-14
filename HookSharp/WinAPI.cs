@@ -26,7 +26,7 @@ namespace HookSharp
         public static extern bool CloseHandle(IntPtr hObject);
         [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
         private static extern IntPtr LoadLibraryExW([MarshalAs(UnmanagedType.LPWStr)]string lpFileName, IntPtr hReservedNull, uint dwFlags);
-
+        
         public static IntPtr LoadLibrary(string dllPath)
         {
             IntPtr moduleHandle = LoadLibraryExW(dllPath, IntPtr.Zero, 0x1 /*DontResolveDllReferences*/);
